@@ -15,7 +15,8 @@ namespace Grocery.App.ViewModels
         private readonly IGroceryListItemsService _groceryListItemsService;
         private readonly IProductService _productService;
         private readonly IFileSaverService _fileSaverService;
-        
+        private string searchText = "";
+
         public ObservableCollection<GroceryListItem> MyGroceryListItems { get; set; } = [];
         public ObservableCollection<Product> AvailableProducts { get; set; } = [];
 
@@ -43,7 +44,7 @@ namespace Grocery.App.ViewModels
         {
             AvailableProducts.Clear();
             foreach (Product p in _productService.GetAll())
-                if (MyGroceryListItems.FirstOrDefault(g => g.ProductId == p.Id) == null  && p.Stock > 0)
+                if (MyGroceryListItems.FirstOrDefault(g => g.ProductId == p.Id) == null && p.Stock > 0 && (searchText == "" || p.Name.ToLower().Contains(searchText.ToLower())))
                     AvailableProducts.Add(p);
         }
 
@@ -59,15 +60,25 @@ namespace Grocery.App.ViewModels
             await Shell.Current.GoToAsync($"{nameof(ChangeColorView)}?Name={GroceryList.Name}", true, paramater);
         }
         [RelayCommand]
-        public void AddProduct(Product product)
+        public async void AddProduct(Product product)
         {
-            if (product == null) return;
+            if (product == null)
+            {
+                MyMessage = "Selecteer eerst een product om toe te voegen.";
+                await Task.Delay(2000);
+                MyMessage = string.Empty;
+                return;
+            }
+
             GroceryListItem item = new(0, GroceryList.Id, product.Id, 1);
             _groceryListItemsService.Add(item);
             product.Stock--;
             _productService.Update(product);
             AvailableProducts.Remove(product);
             OnGroceryListChanged(GroceryList);
+            MyMessage = $"{product.Name} is toegevoegd aan de boodschappenlijst.";
+            await Task.Delay(2000);
+            MyMessage = string.Empty;
         }
 
         [RelayCommand]
@@ -86,5 +97,37 @@ namespace Grocery.App.ViewModels
             }
         }
 
+        [RelayCommand]
+        public void PerformSearch(string searchText)
+        {
+            this.searchText = searchText;
+            GetAvailableProducts();
+        }
+
+        [RelayCommand]
+        public void IncreaseAmount(int productId)
+        {
+            GroceryListItem? item = MyGroceryListItems.FirstOrDefault(x => x.ProductId == productId);
+            if (item == null) return;
+            if (item.Amount >= item.Product.Stock) return;
+            item.Amount++;
+            _groceryListItemsService.Update(item);
+            item.Product.Stock--;
+            _productService.Update(item.Product);
+            OnGroceryListChanged(GroceryList);
+        }
+
+        [RelayCommand]
+        public void DecreaseAmount(int productId)
+        {
+            GroceryListItem? item = MyGroceryListItems.FirstOrDefault(x => x.ProductId == productId);
+            if (item == null) return;
+            if (item.Amount <= 0) return;
+            item.Amount--;
+            _groceryListItemsService.Update(item);
+            item.Product.Stock++;
+            _productService.Update(item.Product);
+            OnGroceryListChanged(GroceryList);
+        }
     }
 }
